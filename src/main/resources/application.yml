@@ -1,0 +1,56 @@
+spring:
+  application:
+    name: esl-panpan-protocol-consumer
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3307/esl_panpan?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=utf8}
+    username: ${SPRING_DATASOURCE_USERNAME:panpan}
+    password: ${SPRING_DATASOURCE_PASSWORD:panpan}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+  rabbitmq:
+    host: ${SPRING_RABBITMQ_HOST:localhost}
+    port: ${SPRING_RABBITMQ_PORT:5673}
+    username: ${SPRING_RABBITMQ_USERNAME:panpan}
+    password: ${SPRING_RABBITMQ_PASSWORD:panpan}
+    listener:
+      simple:
+        acknowledge-mode: manual
+        default-requeue-rejected: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+panpan:
+  rabbit:
+    command-exchange: esl.command.exchange
+    command-queue: panpan.command.queue
+    command-routing-key: panpan.command
+    report-exchange: esl.report.exchange
+    report-queue: panpan.report.queue
+    report-routing-key: panpan.report
+    dead-exchange: esl.dead.exchange
+    dead-queue: panpan.dead.queue
+  mqtt:
+    enabled: true
+    broker-url: ${PANPAN_MQTT_BROKER_URL:tcp://localhost:1883}
+    client-id-prefix: panpan-protocol-consumer
+    qos: 1
+    subscriptions:
+      - esl/ap/report/+/+
+      - esl/ap/ack/+
+      - esl/esl/reqkey/+
+  timeout:
+    enabled: true
+    command-ttl: 5m
+    scan-interval: 30s

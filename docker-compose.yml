@@ -1,0 +1,63 @@
+services:
+  mysql:
+    image: mysql:8.0.36
+    container_name: panpan-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: esl_panpan
+      MYSQL_USER: panpan
+      MYSQL_PASSWORD: panpan
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "${PANPAN_MYSQL_PORT:-3307}:3306"
+    volumes:
+      - panpan_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-upanpan", "-ppanpan"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: panpan-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: panpan
+      RABBITMQ_DEFAULT_PASS: panpan
+    ports:
+      - "${PANPAN_RABBITMQ_PORT:-5673}:5672"
+      - "${PANPAN_RABBITMQ_MANAGEMENT_PORT:-15673}:15672"
+    volumes:
+      - panpan_rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  emqx:
+    image: emqx/emqx:5.8.4
+    container_name: panpan-emqx
+    environment:
+      EMQX_DASHBOARD__DEFAULT_USERNAME: admin
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: public
+    ports:
+      - "${PANPAN_MQTT_PORT:-1883}:1883"
+      - "${PANPAN_EMQX_DASHBOARD_PORT:-18083}:18083"
+    volumes:
+      - panpan_emqx_data:/opt/emqx/data
+      - panpan_emqx_log:/opt/emqx/log
+    healthcheck:
+      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  panpan_mysql_data:
+  panpan_rabbitmq_data:
+  panpan_emqx_data:
+  panpan_emqx_log:

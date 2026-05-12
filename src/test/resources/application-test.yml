@@ -1,0 +1,17 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  rabbitmq:
+    listener:
+      simple:
+        acknowledge-mode: manual
+        default-requeue-rejected: false
+
+panpan:
+  mqtt:
+    enabled: false
+  timeout:
+    enabled: false
+    command-ttl: 2s
+    scan-interval: 1s
