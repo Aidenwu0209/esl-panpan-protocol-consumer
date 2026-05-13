@@ -27,6 +27,8 @@ public class PanPanProperties {
         private String reportExchange = "esl.report.exchange";
         private String reportQueue = "panpan.report.queue";
         private String reportRoutingKey = "panpan.report";
+        private String taskStatusExchange = "esl.task.status.exchange";
+        private String taskStatusRoutingKey = "panpan.task.status";
         private String deadExchange = "esl.dead.exchange";
         private String deadQueue = "panpan.dead.queue";
     }

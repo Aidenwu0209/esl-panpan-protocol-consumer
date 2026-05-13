@@ -30,9 +30,13 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.amqp.core.BindingBuilder;
+import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageBuilder;
 import org.springframework.amqp.core.MessageProperties;
+import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.rabbit.core.RabbitAdmin;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -49,6 +53,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @ActiveProfiles("test")
 @SpringBootTest
 class PanPanConsumerIntegrationTest {
+
+    private static final String STATUS_PROBE_QUEUE = "panpan.test.status.queue";
 
     @Container
     static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.0.36")
@@ -77,6 +83,8 @@ class PanPanConsumerIntegrationTest {
     @Autowired
     RabbitTemplate rabbitTemplate;
     @Autowired
+    RabbitAdmin rabbitAdmin;
+    @Autowired
     PanPanProperties properties;
     @Autowired
     CommandTaskRepository commandTaskRepository;
@@ -95,6 +103,14 @@ class PanPanConsumerIntegrationTest {
     @BeforeEach
     void setUp() {
         reset(mqttPublisher);
+        DirectExchange statusExchange = new DirectExchange(properties.getRabbit().getTaskStatusExchange(), true, false);
+        Queue statusQueue = statusProbeQueue();
+        rabbitAdmin.declareExchange(statusExchange);
+        rabbitAdmin.declareQueue(statusQueue);
+        rabbitAdmin.declareBinding(BindingBuilder.bind(statusQueue)
+                .to(statusExchange)
+                .with(properties.getRabbit().getTaskStatusRoutingKey()));
+        rabbitAdmin.purgeQueue(statusQueue.getName(), true);
     }
 
     @Test
@@ -109,6 +125,7 @@ class PanPanConsumerIntegrationTest {
             assertThat(task.getMqttPayload()).contains("\"command\":\"wtag\"");
         });
         verify(mqttPublisher, timeout(5000).times(1)).publish(eq("esl/server/data/ZH01"), contains("\"command\":\"wtag\""));
+        awaitStatusEvent(taskUuid, "PUBLISHED");
 
         sendCommand(tagUpdateJson(taskUuid, "6597069770841"));
 
@@ -132,6 +149,7 @@ class PanPanConsumerIntegrationTest {
                 Instant.now()
         ));
         awaitTaskStatus(taskUuid, CommandStatus.AP_ACKED);
+        awaitStatusEvent(taskUuid, "AP_ACKED");
 
         sendReport(new MqttReportEvent(
                 new RoutedTopic(ReportType.ESL_REPORT, "esl/ap/report/tag/ESLAP00000008", "tag", "ESLAP00000008", null),
@@ -148,6 +166,7 @@ class PanPanConsumerIntegrationTest {
                 assertThat(tag.getApCode()).isEqualTo("ESLAP00000008");
             });
         });
+        awaitStatusEvent(taskUuid, "ESL_REPORTED");
     }
 
     @Test
@@ -184,6 +203,7 @@ class PanPanConsumerIntegrationTest {
         assertThat(timedOut).isGreaterThanOrEqualTo(1);
         assertThat(commandTaskRepository.findByTaskUuid(taskUuid).orElseThrow().getStatus())
                 .isEqualTo(CommandStatus.TIMEOUT);
+        awaitStatusEvent(taskUuid, "TIMEOUT");
     }
 
     @Test
@@ -212,6 +232,20 @@ class PanPanConsumerIntegrationTest {
                 properties.getRabbit().getCommandRoutingKey(),
                 message
         );
+    }
+
+    private void awaitStatusEvent(String taskUuid, String status) {
+        await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
+            Message event = rabbitTemplate.receive(statusProbeQueue().getName(), 1000);
+            assertThat(event).isNotNull();
+            String body = new String(event.getBody(), StandardCharsets.UTF_8);
+            assertThat(body).contains("\"taskUuid\":\"" + taskUuid + "\"");
+            assertThat(body).contains("\"status\":\"" + status + "\"");
+        });
+    }
+
+    private Queue statusProbeQueue() {
+        return new Queue(STATUS_PROBE_QUEUE, false, false, false);
     }
 
     private void sendReport(MqttReportEvent event) {

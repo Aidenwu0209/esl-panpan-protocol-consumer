@@ -39,6 +39,8 @@ panpan:
     report-exchange: esl.report.exchange
     report-queue: panpan.report.queue
     report-routing-key: panpan.report
+    task-status-exchange: esl.task.status.exchange
+    task-status-routing-key: panpan.task.status
     dead-exchange: esl.dead.exchange
     dead-queue: panpan.dead.queue
   mqtt:

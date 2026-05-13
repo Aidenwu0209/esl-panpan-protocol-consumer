@@ -38,6 +38,11 @@ public class RabbitTopologyConfig {
     }
 
     @Bean
+    DirectExchange taskStatusExchange(PanPanProperties properties) {
+        return ExchangeBuilder.directExchange(properties.getRabbit().getTaskStatusExchange()).durable(true).build();
+    }
+
+    @Bean
     Queue reportQueue(PanPanProperties properties) {
         return QueueBuilder.durable(properties.getRabbit().getReportQueue())
                 .withArgument("x-dead-letter-exchange", properties.getRabbit().getDeadExchange())
