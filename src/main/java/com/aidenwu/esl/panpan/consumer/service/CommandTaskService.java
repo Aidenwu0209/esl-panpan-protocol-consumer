@@ -4,6 +4,7 @@ import com.aidenwu.esl.panpan.consumer.command.PanPanCommandMessage;
 import com.aidenwu.esl.panpan.consumer.config.PanPanProperties;
 import com.aidenwu.esl.panpan.consumer.domain.CommandStatus;
 import com.aidenwu.esl.panpan.consumer.domain.CommandTask;
+import com.aidenwu.esl.panpan.consumer.domain.MessageType;
 import com.aidenwu.esl.panpan.consumer.protocol.MqttCommand;
 import com.aidenwu.esl.panpan.consumer.repository.CommandTaskRepository;
 import com.aidenwu.esl.panpan.consumer.status.TaskStatusEvent;
@@ -123,16 +124,19 @@ public class CommandTaskService {
     public void markApAcked(String taskUuid, String topic, String payload) {
         repository.findByTaskUuidForUpdate(taskUuid).ifPresent(task -> {
             CommandStatus from = task.getStatus();
+            boolean publishAckStatus = shouldPublishAckStatus(task.getStatus());
             Instant now = Instant.now(clock);
             if (task.getApAckedAt() == null) {
                 task.setApAckedAt(now);
             }
-            if (!isTerminal(task.getStatus()) && task.getStatus() != CommandStatus.ESL_REPORTED) {
+            if (publishAckStatus) {
                 task.setStatus(CommandStatus.AP_ACKED);
             }
             repository.save(task);
             eventLogService.log(taskUuid, "AP_ACK", from, task.getStatus(), topic, payload, "AP ACK received", null);
-            publishStatus(task, task.getStatus(), "AP_ACK", now, topic, "AP ACK received", null);
+            if (publishAckStatus) {
+                publishStatus(task, task.getStatus(), "AP_ACK", now, topic, "AP ACK received", null);
+            }
         });
     }
 
@@ -144,12 +148,15 @@ public class CommandTaskService {
             if (task.getEslReportedAt() == null) {
                 task.setEslReportedAt(now);
             }
-            if (!isTerminal(task.getStatus())) {
+            boolean publishReportStatus = !isTerminal(task.getStatus());
+            if (publishReportStatus) {
                 task.setStatus(CommandStatus.ESL_REPORTED);
             }
             repository.save(task);
             eventLogService.log(taskUuid, "ESL_REPORTED", from, task.getStatus(), topic, payload, null, null);
-            publishStatus(task, task.getStatus(), "ESL_REPORTED", now, topic, null, null);
+            if (publishReportStatus) {
+                publishStatus(task, task.getStatus(), "ESL_REPORTED", now, topic, null, null);
+            }
         });
     }
 
@@ -203,6 +210,10 @@ public class CommandTaskService {
         return status == CommandStatus.SUCCESS || status == CommandStatus.FAILED || status == CommandStatus.TIMEOUT;
     }
 
+    private boolean shouldPublishAckStatus(CommandStatus status) {
+        return status != CommandStatus.ESL_REPORTED && !isTerminal(status);
+    }
+
     private void publishStatus(
             CommandTask task,
             CommandStatus status,
@@ -212,6 +223,9 @@ public class CommandTaskService {
             String message,
             String errorMessage
     ) {
+        if (task.getMessageType() == MessageType.TAG_KEY_REPLY) {
+            return;
+        }
         statusEventPublisher.publish(TaskStatusEvent.from(task, status, stage, occurredAt, topic, message, errorMessage));
     }
 }
